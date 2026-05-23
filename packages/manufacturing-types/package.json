@@ -1,0 +1,19 @@
+{
+  "name": "@hyperfactory/manufacturing-types",
+  "version": "0.1.0",
+  "description": "Core manufacturing types and interfaces for HyperFactory",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.0"
+  },
+  "dependencies": {
+    "zod": "^3.22.0"
+  }
+}

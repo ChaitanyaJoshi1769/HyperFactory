@@ -1,0 +1,21 @@
+{
+  "name": "@hyperfactory/dfm-engine",
+  "version": "0.1.0",
+  "description": "AI-powered Design for Manufacturing analysis engine",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.0"
+  },
+  "dependencies": {
+    "@hyperfactory/manufacturing-types": "workspace:*",
+    "@hyperfactory/shared": "workspace:*",
+    "decimal.js": "^10.4.3"
+  }
+}
