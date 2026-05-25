@@ -1,6 +1,6 @@
 """Authentication router - login, registration, token management"""
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -9,6 +9,7 @@ from app.db import get_db
 from app.schemas.auth import UserCreate, UserRead, UserLogin, TokenResponse, APIKeyCreate, APIKeyRead
 from app.services.auth_service import AuthService
 from app.security import ACCESS_TOKEN_EXPIRE_MINUTES
+from app.rate_limiter import check_register_rate_limit, check_login_rate_limit, get_client_identifier
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()
@@ -19,8 +20,12 @@ security = HTTPBearer()
 # ============================================================================
 
 @router.post("/register", response_model=UserRead, status_code=201)
-def register(user: UserCreate, db: Session = Depends(get_db)):
+def register(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Register a new user"""
+    # Rate limiting: 3 registration attempts per email per 10 minutes
+    client_ip = get_client_identifier(request)
+    check_register_rate_limit(user.email, client_ip)
+
     try:
         db_user = AuthService.create_user(db, user)
         return db_user
@@ -29,8 +34,12 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(credentials: UserLogin, db: Session = Depends(get_db)):
+def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login user and get access token"""
+    # Rate limiting: 5 login attempts per username per 5 minutes
+    client_ip = get_client_identifier(request)
+    check_login_rate_limit(credentials.username, client_ip)
+
     user = AuthService.authenticate_user(db, credentials)
 
     if not user:
