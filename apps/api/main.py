@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from app.routers import hardware_router, supplier_router, factory_router, cad_router, auth_router, admin_router
+from app.routers import hardware_router, supplier_router, factory_router, cad_router, auth_router, admin_router, websocket_router
 from app.exceptions import register_exception_handlers
 
 # Lifespan context manager
@@ -71,6 +71,7 @@ app.include_router(factory_router)
 app.include_router(cad_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(websocket_router)
 
 if __name__ == "__main__":
     import uvicorn

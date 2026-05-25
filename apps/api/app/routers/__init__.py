@@ -6,6 +6,7 @@ from .factory import router as factory_router
 from .cad import router as cad_router
 from .auth import router as auth_router
 from .admin import router as admin_router
+from .websocket import router as websocket_router
 
 __all__ = [
     "hardware_router",
@@ -14,4 +15,5 @@ __all__ = [
     "cad_router",
     "auth_router",
     "admin_router",
+    "websocket_router",
 ]
