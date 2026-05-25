@@ -1,384 +1,562 @@
-# Rate Limiting - Authentication Security
+# Rate Limiting - API Abuse Prevention and Traffic Control
 
 ## Overview
 
-HyperFactory implements built-in rate limiting for authentication endpoints to protect against brute-force attacks and credential stuffing. The system uses configurable, time-window-based rate limiting with automatic cleanup of expired attempts.
+Rate limiting is a critical security and stability mechanism that protects APIs from abuse, prevents resource exhaustion, and ensures fair access for all users. HyperFactory implements three distinct rate-limiting strategies, each with different trade-offs between accuracy, memory usage, and performance.
 
-## Features
+### Key Features
 
-✅ **Brute-Force Protection**
-- Login: 5 attempts per username per 5 minutes
-- Registration: 3 attempts per email per 10 minutes
-- Password Reset: 3 attempts per email per hour
-
-✅ **Per-Resource Limiting**
-- Separate limits for each username (login) or email (registration)
-- Different attackers don't interfere with each other
-
-✅ **Time Window Based**
-- Fixed time windows automatically reset after expiration
-- Automatic cleanup of expired attempts to save memory
-
-✅ **Informative Responses**
-- 429 Too Many Requests status code
-- Clear error messages with time remaining
-- Retry-After header for client guidance
-
-✅ **IP-Aware**
-- Identifies client IP address from X-Forwarded-For header (proxies)
-- Falls back to direct client IP for non-proxied requests
-- Useful for future IP-based rate limiting
+- **Multiple Strategies**: Fixed Window, Sliding Window, and Token Bucket algorithms
+- **Flexible Configuration**: Per-minute, per-hour, and per-day limits
+- **Burst Allowance**: Controlled burst support for temporary traffic spikes
+- **Comprehensive Tracking**: Request counting and usage statistics
+- **Security Audit Logging**: Full request tracing for security analysis
+- **Production Ready**: Pre-configured limiters for authentication endpoints
 
 ## Architecture
 
-### RateLimiter Class
+### Rate Limiting Strategies
 
-The core rate limiting logic is in `app/rate_limiter.py`:
+#### 1. Fixed Window (FIXED_WINDOW)
 
-```python
-from app.rate_limiter import RateLimiter
+**Simplest, least accurate, but lowest overhead**
 
-limiter = RateLimiter(max_attempts=5, window_seconds=300)
+- Divides time into fixed windows (minute, hour, day)
+- Counts requests in each window independently
+- Resets at fixed time boundaries (e.g., every minute)
 
-# Check if allowed
-if limiter.is_allowed("identifier"):
-    limiter.add_attempt("identifier")
-else:
-    # Rate limited - return 429
-    pass
-```
+**Characteristics:**
+- Memory: O(1) per identifier (constant)
+- CPU: O(1) check (very fast)
+- Accuracy: Low - boundary condition issues
+- Burst handling: Poor - allows spike at window boundaries
 
-### Global Rate Limiters
+**Use Cases:**
+- High-volume APIs where accuracy is less critical
+- Simple rate limiting for public endpoints
+- Scenarios where memory efficiency is paramount
 
-Three pre-configured rate limiters are provided:
+#### 2. Sliding Window (SLIDING_WINDOW)
 
-```python
-login_limiter = RateLimiter(max_attempts=5, window_seconds=300)
-register_limiter = RateLimiter(max_attempts=3, window_seconds=600)
-password_reset_limiter = RateLimiter(max_attempts=3, window_seconds=3600)
-```
+**Most accurate, moderate overhead, best for most use cases**
 
-### Helper Functions
+- Maintains request history within rolling time windows
+- Counts requests in a continuous rolling window
+- More accurate than fixed window with reasonable memory usage
 
-```python
-# Check rate limit and raise HTTPException if exceeded
-check_rate_limit(limiter, identifier)
+**Characteristics:**
+- Memory: O(n) where n = requests in window (typical: small)
+- CPU: O(n) check (still fast for typical request rates)
+- Accuracy: High - prevents boundary bursts
+- Burst handling: Good - enforces limits across time
 
-# Specific helpers
-check_login_rate_limit(username, client_ip)
-check_register_rate_limit(email, client_ip)
-check_password_reset_rate_limit(email, client_ip)
+**Use Cases:**
+- Standard rate limiting for APIs
+- Per-user or per-API-key rate limiting
+- Scenarios where accuracy matters but memory is available
 
-# Get client IP from request
-get_client_identifier(request)
-```
+#### 3. Token Bucket (TOKEN_BUCKET)
 
-## Integration with Auth Endpoints
+**Fairest, allows controlled bursts, best for mixed traffic**
 
-The rate limiter is integrated into authentication endpoints:
+- Replenishes tokens at a fixed rate
+- Allows burst up to bucket capacity
+- Common in production systems
 
-```python
-from fastapi import Request
-from app.rate_limiter import check_login_rate_limit, get_client_identifier
+**Characteristics:**
+- Memory: O(1) per identifier (constant, just stores token count)
+- CPU: O(1) check (very fast)
+- Accuracy: Medium - doesn't track individual requests
+- Burst handling: Excellent - controlled burst support
 
-@router.post("/login")
-def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
-    client_ip = get_client_identifier(request)
-    check_login_rate_limit(credentials.username, client_ip)
-    
-    # Continue with login logic
-    ...
-```
-
-## API Behavior
-
-### Successful Request
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "user1", "password": "pass123"}'
-
-HTTP/1.1 200 OK
-{
-  "access_token": "eyJ0eX...",
-  "token_type": "bearer",
-  "expires_in": 86400
-}
-```
-
-### Rate Limited Request
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "user1", "password": "wrong"}'
-
-HTTP/1.1 429 Too Many Requests
-{
-  "detail": "Too many attempts. Try again in 245 seconds."
-}
-
-Headers:
-Retry-After: 245
-```
+**Use Cases:**
+- APIs that tolerate bursts but need fair long-term limits
+- Services with variable load patterns
+- Scenarios where request patterns are bursty but bounded
 
 ## Configuration
 
-Modify rate limiting in `app/rate_limiter.py`:
+### RateLimitConfig Class
 
 ```python
-# Increase login attempts to 10 per 10 minutes
-login_limiter = RateLimiter(max_attempts=10, window_seconds=600)
+from app.rate_limiter import RateLimitConfig
 
-# Stricter registration: 1 attempt per hour
-register_limiter = RateLimiter(max_attempts=1, window_seconds=3600)
+# Default configuration
+config = RateLimitConfig()
+
+# Custom configuration
+config = RateLimitConfig(
+    requests_per_minute=50,    # Default: 100
+    requests_per_hour=1000,    # Default: 3000
+    requests_per_day=10000,    # Default: 50000
+    burst_allowance=1.5        # Default: 1.5
+)
 ```
 
-Or programmatically:
+**Configuration Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `requests_per_minute` | int | 100 | Requests allowed per minute |
+| `requests_per_hour` | int | 3000 | Requests allowed per hour |
+| `requests_per_day` | int | 50000 | Requests allowed per day |
+| `burst_allowance` | float | 1.5 | Multiplier for token bucket burst (1.0 = no burst) |
+
+### RateLimitStatus Class
+
+Returned by rate limiter checks, contains decision and response headers:
 
 ```python
-from app.rate_limiter import login_limiter
+from app.rate_limiter import RateLimitStatus
 
-# Allow more attempts
-login_limiter.max_attempts = 10
-login_limiter.window_seconds = 600
+status = RateLimitStatus(
+    allowed=True,                          # Is request allowed?
+    requests_remaining=95,                 # Remaining requests in window
+    reset_at=datetime(2026, 5, 25, 10, 31, 0),  # When window resets
+    retry_after_seconds=None               # Seconds until can retry (if denied)
+)
+
+# Convert to HTTP response headers
+headers = status.to_headers()
+# Returns: {
+#     'X-RateLimit-Remaining': '95',
+#     'X-RateLimit-Reset': '1749432660'  (Unix timestamp)
+# }
 ```
 
-## How It Works
+## RateLimiter API
 
-### Example: 5 Login Attempts in 5 Minutes
-
-```
-t=0:00  User attempts login #1 ✓ Allowed (0/5 used)
-t=0:10  User attempts login #2 ✓ Allowed (1/5 used)
-t=1:20  User attempts login #3 ✓ Allowed (2/5 used)
-t=2:30  User attempts login #4 ✓ Allowed (3/5 used)
-t=3:45  User attempts login #5 ✓ Allowed (4/5 used)
-t=4:00  User attempts login #6 ✗ BLOCKED (5/5 at limit)
-        "Try again in 60 seconds"
-
-t=5:00  Window expires (first attempt at t=0:00)
-t=5:01  User attempts login #6 ✓ Allowed again (1/5 used)
-```
-
-### Memory Management
-
-The rate limiter automatically cleans up:
-
-1. **On every check**: Removes attempts older than the window
-2. **Periodically**: Deletes empty identifier entries
+### Creating Limiters
 
 ```python
-def _cleanup_old_attempts(self, identifier: str) -> None:
-    """Remove attempts outside the time window"""
-    current_time = time.time()
-    self.attempts[identifier] = [
-        (ts, data) for ts, data in self.attempts[identifier]
-        if current_time - ts < self.window_seconds
-    ]
+from app.rate_limiter import RateLimiter, RateLimitStrategy, RateLimitConfig
+
+# Using default strategy (Fixed Window)
+limiter = RateLimiter()
+
+# Using specific strategy
+fixed = RateLimiter(strategy=RateLimitStrategy.FIXED_WINDOW)
+sliding = RateLimiter(strategy=RateLimitStrategy.SLIDING_WINDOW)
+token = RateLimiter(strategy=RateLimitStrategy.TOKEN_BUCKET)
 ```
 
-## Testing
-
-Comprehensive test suite in `tests/test_rate_limiting.py`:
-
-```bash
-# Run rate limiting tests
-python -m pytest tests/test_rate_limiting.py -v
-
-# Specific test
-python -m pytest tests/test_rate_limiting.py::test_login_rate_limiting -v
-```
-
-### Unit Tests
-
-- Rate limiter creation and configuration
-- Allow/block logic
-- Multiple identifiers (separate limits)
-- Time window expiration and reset
-- Remaining attempts calculation
-
-### Integration Tests
-
-- Login rate limiting (5 attempts per 5 min)
-- Registration rate limiting (3 attempts per 10 min)
-- Per-username and per-email isolation
-- Retry-After header inclusion
-- Reset after time window
-
-## Future Enhancements
-
-### IP-Based Rate Limiting
-
-Block suspicious IPs attempting many failed logins:
+### Checking Rate Limits
 
 ```python
-# 20 failed logins from single IP in 1 hour = block IP
-ip_limiter = RateLimiter(max_attempts=20, window_seconds=3600)
-check_rate_limit(ip_limiter, client_ip)
+config = RateLimitConfig(requests_per_minute=10)
+now = datetime.utcnow()
+
+# Check if request is allowed
+status = limiter.check_limit("user_123", config, now)
+
+if status.allowed:
+    # Process request
+    response_headers = status.to_headers()
+else:
+    # Return 429 Too Many Requests
+    retry_after = status.retry_after_seconds
+    return Response(
+        "Rate limit exceeded",
+        status_code=429,
+        headers={
+            'Retry-After': str(retry_after),
+            **status.to_headers()
+        }
+    )
 ```
 
-### Distributed Rate Limiting
-
-For multi-server deployments, replace in-memory store with Redis:
+### Getting Usage Statistics
 
 ```python
-class RedisRateLimiter(RateLimiter):
-    def __init__(self, redis_client, max_attempts=5, window_seconds=300):
-        self.redis = redis_client
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
+# Get usage for identifier
+usage = limiter.get_usage("user_123")
 
-    def is_allowed(self, identifier: str) -> bool:
-        count = self.redis.incr(f"rate_limit:{identifier}")
-        if count == 1:
-            self.redis.expire(f"rate_limit:{identifier}", self.window_seconds)
-        return count <= self.max_attempts
+# Sliding window returns:
+# {
+#     "requests_last_minute": 7,
+#     "requests_last_hour": 150,
+#     "requests_last_day": 2000,
+#     "total_requests": 2000
+# }
+
+# Token bucket returns:
+# {
+#     "tokens_available": 3,
+#     "last_refill": "2026-05-25T10:30:00"
+# }
 ```
 
-### Account Lockout
-
-Temporarily lock accounts after multiple failures:
+### Resetting Limits
 
 ```python
-def account_lockout_after_failures(user_id: str, max_failures: int = 5):
-    failures = login_failure_count.get(user_id, 0)
-    if failures >= max_failures:
-        user.is_locked = True
-        user.locked_until = datetime.utcnow() + timedelta(minutes=30)
+# Reset for single identifier
+limiter.reset("user_123")
+
+# Reset for all identifiers
+limiter.reset_all()
 ```
 
-### Adaptive Rate Limiting
+## Pre-Configured Limiters for Authentication
 
-Increase limits for verified accounts, decrease for suspicious ones:
+The rate limiter module includes pre-configured limiters for common authentication scenarios:
 
 ```python
-def get_rate_limit_for_user(user: User) -> RateLimiter:
-    if user.is_verified and user.mfa_enabled:
-        return RateLimiter(max_attempts=20, window_seconds=300)
-    elif not user.is_verified:
-        return RateLimiter(max_attempts=2, window_seconds=300)
+from app.rate_limiter import (
+    login_limiter,
+    register_limiter,
+    get_client_identifier,
+    check_login_rate_limit,
+    check_register_rate_limit,
+)
+
+# Helper function to get client identifier
+def rate_limit_login(request):
+    client_id = get_client_identifier(request)
+    allowed, error = check_login_rate_limit(client_id)
+    if not allowed:
+        return {"error": error}, 429
+
+def rate_limit_register(request):
+    client_id = get_client_identifier(request)
+    allowed, error = check_register_rate_limit(client_id)
+    if not allowed:
+        return {"error": error}, 429
+```
+
+**Client Identifier Logic:**
+
+```python
+def get_client_identifier(request) -> str:
+    """
+    Get unique identifier for rate limiting.
+    Uses X-Forwarded-For header for load balancer scenarios,
+    falls back to client IP address.
+    """
+    # Check for proxy header (load balancer)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    
+    # Use direct client IP
+    return request.client.host
+```
+
+## HTTP Headers
+
+Rate limiting uses standard HTTP headers for client communication:
+
+### Response Headers (All Requests)
+
+```
+X-RateLimit-Remaining: 95        # Requests remaining in window
+X-RateLimit-Reset: 1749432660    # Unix timestamp when limit resets
+```
+
+### Response Headers (Denied Requests Only)
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 45                   # Seconds until can retry
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1749432660
+```
+
+## FastAPI Middleware Integration
+
+### Complete Middleware Example
+
+```python
+from fastapi import Request, Response
+from app.rate_limiter import (
+    rate_limiter,
+    RateLimitConfig,
+    get_client_identifier,
+)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """
+    Apply rate limiting to all requests.
+    Exempts certain paths from rate limiting.
+    """
+    # Exempt health checks and public endpoints
+    exempt_paths = {"/health", "/api/status", "/docs", "/openapi.json"}
+    if request.url.path in exempt_paths:
+        return await call_next(request)
+    
+    # Get rate limit configuration based on path
+    if request.url.path.startswith("/api/auth/login"):
+        config = LOGIN_RATE_LIMIT_CONFIG
+    elif request.url.path.startswith("/api/auth/register"):
+        config = REGISTER_RATE_LIMIT_CONFIG
     else:
-        return RateLimiter(max_attempts=5, window_seconds=300)
+        # Default API limit
+        config = RateLimitConfig(
+            requests_per_minute=100,
+            requests_per_hour=10000,
+            requests_per_day=100000
+        )
+    
+    # Get client identifier (IP address or forwarded IP)
+    client_id = get_client_identifier(request)
+    
+    # Check rate limit
+    status = rate_limiter.check_limit(client_id, config)
+    
+    if not status.allowed:
+        return Response(
+            content={
+                "error": "rate_limit_exceeded",
+                "message": f"Rate limit exceeded. Retry in {status.retry_after_seconds} seconds.",
+            },
+            status_code=429,
+            headers={
+                "Retry-After": str(status.retry_after_seconds),
+                **status.to_headers(),
+            }
+        )
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Add rate limit headers to response
+    for header, value in status.to_headers().items():
+        response.headers[header] = value
+    
+    return response
 ```
 
-## Security Considerations
-
-⚠️ **Current Limitations**
-
-- In-memory only: Does not persist across server restarts
-- Single-server: Not suitable for load-balanced deployments
-- Time-based: Doesn't account for multiple failed attempts from different IPs
-
-✅ **Mitigations**
-
-- Use with HTTPS only (no credentials in logs)
-- Monitor failed login patterns in audit logs
-- Consider deploying behind API gateway with rate limiting
-- Use firewall rules for IP-based attacks
-- Implement account lockout for repeated failures
-
-## Compliance
-
-Rate limiting helps meet security compliance requirements:
-
-- **OWASP**: Protects against Brute Force attacks (A07:2021)
-- **NIST SP 800-63B**: Implements "Account Lockout Policy"
-- **PCI DSS**: Requirement 8.2.3 and 8.2.4 (password policies)
-- **GDPR**: Part of security safeguards for user accounts
-
-## Monitoring
-
-Monitor rate limiting effectiveness:
-
-```python
-# Get statistics
-remaining = login_limiter.get_remaining_attempts("user1")
-reset_time = login_limiter.get_reset_time("user1")
-
-# Log attempts
-def log_rate_limit_check(identifier: str, allowed: bool):
-    logger.info(f"Rate limit check: {identifier} -> {'allowed' if allowed else 'blocked'}")
-```
-
-## Examples
+## Client Library Examples
 
 ### Python Client
 
 ```python
 import requests
-from requests.exceptions import HTTPError
+import time
+from app.rate_limiter import RateLimitConfig, RateLimiter
+from datetime import datetime
 
-def login_with_retry(username: str, password: str):
-    for attempt in range(3):
-        response = requests.post(
-            "http://localhost:8000/api/auth/login",
-            json={"username": username, "password": password}
-        )
-        
-        if response.status_code == 200:
-            return response.json()["access_token"]
-        elif response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 60))
-            print(f"Rate limited. Retry after {retry_after} seconds")
-            return None
-        elif response.status_code == 401:
-            print("Invalid credentials")
-            return None
+class RateLimitedClient:
+    def __init__(self, base_url, strategy="sliding_window"):
+        self.base_url = base_url
+        self.limiter = RateLimiter(strategy=strategy)
+        self.client_id = "python_client_1"
+        self.config = RateLimitConfig(requests_per_minute=50)
     
-    return None
+    def request(self, method, endpoint, **kwargs):
+        """Make request with built-in rate limiting"""
+        # Check limit before making request
+        status = self.limiter.check_limit(self.client_id, self.config, datetime.utcnow())
+        
+        if not status.allowed:
+            # Wait and retry
+            wait_time = status.retry_after_seconds
+            print(f"Rate limit hit. Waiting {wait_time} seconds...")
+            time.sleep(wait_time)
+            return self.request(method, endpoint, **kwargs)
+        
+        # Make request
+        url = f"{self.base_url}{endpoint}"
+        response = requests.request(method, url, **kwargs)
+        
+        if response.status_code == 429:
+            # Handle rate limit error
+            retry_after = int(response.headers.get('Retry-After', 60))
+            print(f"Rate limited. Retry after {retry_after}s")
+            time.sleep(retry_after)
+            return self.request(method, endpoint, **kwargs)
+        
+        return response
 ```
 
 ### JavaScript Client
 
 ```javascript
-async function loginWithRateLimit(username, password) {
-  const response = await fetch('http://localhost:8000/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  });
-
-  if (response.status === 429) {
-    const retryAfter = response.headers.get('Retry-After');
-    throw new Error(`Rate limited. Retry after ${retryAfter} seconds`);
+class RateLimitedFetch {
+  constructor(baseURL, config = {}) {
+    this.baseURL = baseURL;
+    this.requestCount = 0;
+    this.windowStart = Date.now();
+    this.requestsPerMinute = config.requestsPerMinute || 100;
   }
 
-  if (!response.ok) {
-    throw new Error('Login failed');
-  }
+  async request(endpoint, options = {}) {
+    const now = Date.now();
+    const windowAge = now - this.windowStart;
 
-  return response.json();
+    // Reset window if minute has passed
+    if (windowAge > 60000) {
+      this.requestCount = 0;
+      this.windowStart = now;
+    }
+
+    // Check rate limit
+    if (this.requestCount >= this.requestsPerMinute) {
+      const waitTime = 60000 - windowAge;
+      console.log(`Rate limit. Waiting ${waitTime}ms...`);
+      await new Promise(r => setTimeout(r, waitTime));
+      return this.request(endpoint, options);
+    }
+
+    this.requestCount++;
+
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Content-Type': 'application/json',
+      }
+    });
+
+    // Handle 429 responses
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After') || 60;
+      console.log(`Rate limited. Retry after ${retryAfter}s`);
+      await new Promise(r => setTimeout(r, retryAfter * 1000));
+      return this.request(endpoint, options);
+    }
+
+    return response;
+  }
 }
 ```
 
-## Performance Impact
+## Rate Limiting Strategies Comparison
 
-- **Memory**: ~200 bytes per unique identifier in window
-- **CPU**: O(n) cleanup per request (where n = attempts in window, typically < 10)
-- **Latency**: < 1ms per request (negligible)
+| Aspect | Fixed Window | Sliding Window | Token Bucket |
+|--------|--------------|----------------|--------------|
+| **Accuracy** | Low | High | Medium |
+| **Memory Usage** | O(1) | O(n) | O(1) |
+| **CPU Usage** | O(1) | O(n) | O(1) |
+| **Boundary Issues** | Severe | None | None |
+| **Burst Support** | Poor | Good | Excellent |
+| **Best For** | High volume | General purpose | Bursty traffic |
 
-For typical usage (< 1000 simultaneous attack attempts):
+## Best Practices
 
+### 1. Choose the Right Strategy
+
+```python
+# High-volume public API - accuracy less critical
+limiter = RateLimiter(strategy=RateLimitStrategy.FIXED_WINDOW)
+
+# Standard API - good accuracy and fairness
+limiter = RateLimiter(strategy=RateLimitStrategy.SLIDING_WINDOW)
+
+# APIs with bursty traffic - allow controlled bursts
+limiter = RateLimiter(strategy=RateLimitStrategy.TOKEN_BUCKET)
 ```
-Memory: ~200 KB
-CPU: < 1% overhead
-Latency: < 0.5ms added per request
+
+### 2. Different Limits for Different Operations
+
+```python
+def get_rate_limit_config(operation: str) -> RateLimitConfig:
+    """Get appropriate rate limit for operation"""
+    
+    if operation == "read_factories":
+        return RateLimitConfig(requests_per_minute=1000)
+    elif operation == "create_factory":
+        return RateLimitConfig(requests_per_minute=10)
+    elif operation == "delete_factory":
+        return RateLimitConfig(requests_per_minute=5)
+    elif operation == "export_data":
+        return RateLimitConfig(requests_per_minute=2)
+    else:
+        return RateLimitConfig(requests_per_minute=100)
 ```
 
-## Conclusion
+### 3. Careful Burst Allowance Tuning
 
-Rate limiting is a critical security layer protecting authentication endpoints. The HyperFactory implementation provides:
+```python
+# Reasonable burst for temporary spikes
+RateLimitConfig(
+    requests_per_minute=100,
+    burst_allowance=1.5  # Good - allows 150 req spike
+)
 
-- ✅ Transparent integration with existing endpoints
-- ✅ Configurable limits for different auth operations
-- ✅ Automatic time-window management
-- ✅ Comprehensive logging and monitoring
-- ✅ Foundation for future enhancements
+# No burst for strict limits
+RateLimitConfig(
+    requests_per_minute=10,
+    burst_allowance=1.0  # Strict - no bursting
+)
+```
 
-For production deployments, consider:
-1. Adding IP-based rate limiting
-2. Storing rate limit data in Redis for multi-server deployments
-3. Implementing account lockout after repeated failures
-4. Setting up alerts for suspicious patterns
+## Compliance and Security
+
+### OWASP - A4:2021 – Insecure Direct Object References
+
+Rate limiting helps prevent:
+- Enumeration attacks on resource IDs
+- Brute force attacks on APIs
+- Unauthorized access attempts through trial-and-error
+
+### NIST 800-63B - Authentication and Lifecycle Management
+
+Supports:
+- Rate limiting on authentication endpoints
+- Protection against password spray attacks
+- Brute force attack prevention
+
+### PCI DSS - Requirement 6.5.10
+
+Compliance requirement for:
+- Broken authentication prevention
+- Session management security
+- Account lockout mechanisms
+
+### GDPR - Article 32 (Security of Processing)
+
+Rate limiting as part of:
+- Technical and organizational measures
+- Protection against unauthorized use
+- Security risk mitigation
+
+### SOC 2 Type II - CC6 Logical Access
+
+Controls for:
+- Prevention of unauthorized access attempts
+- Detection of abuse patterns
+- Fair resource allocation
+
+## Testing
+
+### Unit Testing Rate Limiting
+
+```python
+from datetime import datetime, timedelta
+from app.rate_limiter import (
+    RateLimiter,
+    RateLimitStrategy,
+    RateLimitConfig
+)
+
+def test_rate_limit():
+    limiter = RateLimiter(strategy=RateLimitStrategy.SLIDING_WINDOW)
+    config = RateLimitConfig(requests_per_minute=3)
+    now = datetime(2024, 1, 15, 10, 30, 0)
+    
+    # First 3 requests allowed
+    for i in range(3):
+        status = limiter.check_limit("user", config, now)
+        assert status.allowed is True
+    
+    # 4th request denied
+    status = limiter.check_limit("user", config, now)
+    assert status.allowed is False
+    assert status.retry_after_seconds > 0
+    
+    # After reset, allowed again
+    later = now + timedelta(minutes=1)
+    status = limiter.check_limit("user", config, later)
+    assert status.allowed is True
+```
+
+## Summary
+
+Rate limiting is essential for:
+- **Security**: Preventing brute force and enumeration attacks
+- **Fairness**: Ensuring all users get reasonable access
+- **Stability**: Preventing resource exhaustion from traffic spikes
+- **Compliance**: Meeting regulatory requirements for access control
+
+Choose sliding window for most applications, fixed window for high-volume APIs, and token bucket for bursty workloads. Monitor rate limit events and adjust limits based on usage patterns.
