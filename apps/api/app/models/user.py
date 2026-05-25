@@ -27,6 +27,8 @@ class User(Base):
     last_login = Column(DateTime)
     is_locked = Column(Boolean, default=False, index=True)
     locked_until = Column(DateTime)  # When the lock expires (auto-unlock)
+    email_verified = Column(Boolean, default=False, index=True)
+    email_verified_at = Column(DateTime)
 
 
 class APIKey(Base):
