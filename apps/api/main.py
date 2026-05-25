@@ -13,6 +13,7 @@ load_dotenv()
 
 # Import routers
 from app.routers import hardware_router, supplier_router, factory_router, cad_router
+from app.exceptions import register_exception_handlers
 
 # Lifespan context manager
 @asynccontextmanager
@@ -39,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register exception handlers
+register_exception_handlers(app)
 
 # Health check endpoint
 @app.get("/health")
