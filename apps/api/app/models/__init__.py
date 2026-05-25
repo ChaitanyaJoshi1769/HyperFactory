@@ -5,6 +5,7 @@ from .supplier import Supplier, SupplierCapability, SupplierQuote
 from .factory import Machine, ProductionJob, FactoryConfig
 from .cad import CADModel, CADAnalysis
 from .user import User, APIKey
+from .session import Session
 
 __all__ = [
     "HardwarePart",
@@ -21,4 +22,5 @@ __all__ = [
     "CADAnalysis",
     "User",
     "APIKey",
+    "Session",
 ]
