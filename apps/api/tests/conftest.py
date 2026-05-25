@@ -5,8 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
-from app.db import Base
-from main import app, get_db
+from app.db import Base, get_db
+from app.main import app
 
 
 # Create in-memory SQLite database for testing
