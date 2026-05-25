@@ -713,3 +713,88 @@ def test_auth_service_update_user(db: Session):
     login_data = UserLogin(username="testuser", password="NewPassword123!")
     auth_user = AuthService.authenticate_user(db, login_data)
     assert auth_user is not None
+
+
+# ============================================================================
+# Token Refresh Tests
+# ============================================================================
+
+def test_refresh_token(client: TestClient, db: Session):
+    """Test token refresh endpoint"""
+    # Register and login
+    client.post(
+        "/api/auth/register",
+        json={
+            "username": "testuser",
+            "email": "test@example.com",
+            "password": "TestPassword123!",
+        }
+    )
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "username": "testuser",
+            "password": "TestPassword123!",
+        }
+    )
+    original_token = login_response.json()["access_token"]
+
+    # Refresh token
+    response = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {original_token}"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    new_token = data["access_token"]
+
+    # Verify new token is different
+    assert new_token != original_token
+
+    # Verify new token works
+    me_response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {new_token}"}
+    )
+    assert me_response.status_code == 200
+
+
+def test_refresh_invalid_token(client: TestClient):
+    """Test refresh fails with invalid token"""
+    response = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": "Bearer invalid_token"}
+    )
+    assert response.status_code == 401
+
+
+def test_refresh_inactive_user(client: TestClient, db: Session):
+    """Test refresh fails for inactive user"""
+    # Create user
+    user_data = UserCreate(
+        username="testuser",
+        email="test@example.com",
+        password="TestPassword123!",
+    )
+    user = AuthService.create_user(db, user_data)
+
+    # Login
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "username": "testuser",
+            "password": "TestPassword123!",
+        }
+    )
+    token = login_response.json()["access_token"]
+
+    # Deactivate user
+    AuthService.deactivate_user(db, user.id)
+
+    # Try to refresh
+    response = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 403

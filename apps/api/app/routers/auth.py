@@ -207,7 +207,7 @@ def revoke_api_key(
 
 
 # ============================================================================
-# Token Refresh (Future)
+# Token Refresh
 # ============================================================================
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -215,7 +215,43 @@ def refresh_token(
     credentials: HTTPAuthCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    """Refresh access token (future implementation)"""
-    # This endpoint is a placeholder for future refresh token support
-    # Current implementation uses long-lived tokens
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """
+    Refresh access token.
+
+    Takes an existing valid JWT token and returns a new one with updated expiration.
+    Useful for keeping sessions alive or extending token lifetime.
+    """
+    token = credentials.credentials
+    user_id = AuthService.verify_user_token(token)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
+        )
+
+    user = AuthService.get_user(db, user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="User account is inactive"
+        )
+
+    # Create new token with fresh expiration
+    access_token = AuthService.create_access_token_for_user(
+        user,
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
