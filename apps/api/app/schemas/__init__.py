@@ -51,6 +51,17 @@ from .cad import (
     CADAnalysisRead,
     CADAnalysisUpdate,
 )
+from .auth import (
+    TokenResponse,
+    UserBase,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+    UserLogin,
+    TokenData,
+    APIKeyCreate,
+    APIKeyRead,
+)
 
 __all__ = [
     # Hardware
@@ -100,4 +111,14 @@ __all__ = [
     "CADAnalysisCreate",
     "CADAnalysisRead",
     "CADAnalysisUpdate",
+    # Auth
+    "TokenResponse",
+    "UserBase",
+    "UserCreate",
+    "UserRead",
+    "UserUpdate",
+    "UserLogin",
+    "TokenData",
+    "APIKeyCreate",
+    "APIKeyRead",
 ]
