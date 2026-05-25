@@ -9,8 +9,10 @@ from app.db import get_db
 from app.schemas.auth import UserCreate, UserRead, UserLogin, TokenResponse, APIKeyCreate, APIKeyRead
 from app.services.auth_service import AuthService
 from app.security import ACCESS_TOKEN_EXPIRE_MINUTES
-from app.rate_limiter import check_register_rate_limit, check_login_rate_limit, get_client_identifier
+from app.rate_limiter import check_register_rate_limit, check_login_rate_limit, get_client_identifier, login_limiter
 from app.audit_logger import audit_logger, AuditEventType, AuditEventSeverity
+from app.account_lockout import account_lockout_manager
+from app.models import User
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()
@@ -50,9 +52,30 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
     client_ip = get_client_identifier(request)
     check_login_rate_limit(credentials.username, client_ip)
 
-    user = AuthService.authenticate_user(db, credentials)
+    # Check if account is locked before authentication
+    user = db.query(User).filter(User.username == credentials.username).first()
+    if user and account_lockout_manager.is_account_locked(db, str(user.id)):
+        lockout_status = account_lockout_manager.get_lockout_status(db, str(user.id))
 
-    if not user:
+        # Audit log: login attempt on locked account
+        audit_logger.log_user_login_failed(
+            username=credentials.username,
+            reason="account_locked",
+            source_ip=client_ip
+        )
+
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account is locked. Try again in {lockout_status.get('seconds_remaining', 0)} seconds."
+        )
+
+    # Authenticate user
+    authenticated_user = AuthService.authenticate_user(db, credentials)
+
+    if not authenticated_user:
+        # Get user for lockout tracking
+        user = db.query(User).filter(User.username == credentials.username).first()
+
         # Audit log: failed login attempt
         audit_logger.log_user_login_failed(
             username=credentials.username,
@@ -60,20 +83,31 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
             source_ip=client_ip
         )
 
+        # Record failed attempt and check for account lockout
+        if user:
+            failed_attempts = login_limiter.get_remaining_attempts(f"login:{credentials.username}")
+            max_attempts = login_limiter.max_attempts
+            failed_count = max_attempts - failed_attempts
+
+            # Lock account if threshold exceeded
+            account_lockout_manager.record_failed_login(
+                db, user, failed_count, source_ip=client_ip
+            )
+
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
         )
 
     access_token = AuthService.create_access_token_for_user(
-        user,
+        authenticated_user,
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
     # Audit log: successful login
     audit_logger.log_user_login(
-        user_id=str(user.id),
-        username=user.username,
+        user_id=str(authenticated_user.id),
+        username=authenticated_user.username,
         source_ip=client_ip
     )
 

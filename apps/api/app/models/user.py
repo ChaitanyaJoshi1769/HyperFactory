@@ -25,6 +25,8 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime)
+    is_locked = Column(Boolean, default=False, index=True)
+    locked_until = Column(DateTime)  # When the lock expires (auto-unlock)
 
 
 class APIKey(Base):
