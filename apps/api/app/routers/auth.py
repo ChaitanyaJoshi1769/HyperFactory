@@ -10,6 +10,7 @@ from app.schemas.auth import UserCreate, UserRead, UserLogin, TokenResponse, API
 from app.services.auth_service import AuthService
 from app.security import ACCESS_TOKEN_EXPIRE_MINUTES
 from app.rate_limiter import check_register_rate_limit, check_login_rate_limit, get_client_identifier
+from app.audit_logger import audit_logger, AuditEventType, AuditEventSeverity
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()
@@ -28,6 +29,15 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db)):
 
     try:
         db_user = AuthService.create_user(db, user)
+
+        # Audit log: successful registration
+        audit_logger.log_user_registered(
+            user_id=str(db_user.id),
+            username=db_user.username,
+            email=db_user.email,
+            source_ip=client_ip
+        )
+
         return db_user
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -43,6 +53,13 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
     user = AuthService.authenticate_user(db, credentials)
 
     if not user:
+        # Audit log: failed login attempt
+        audit_logger.log_user_login_failed(
+            username=credentials.username,
+            reason="invalid_credentials",
+            source_ip=client_ip
+        )
+
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
@@ -51,6 +68,13 @@ def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db
     access_token = AuthService.create_access_token_for_user(
         user,
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    # Audit log: successful login
+    audit_logger.log_user_login(
+        user_id=str(user.id),
+        username=user.username,
+        source_ip=client_ip
     )
 
     return TokenResponse(
@@ -119,7 +143,8 @@ def update_current_user(
 def create_api_key(
     key_data: APIKeyCreate,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ):
     """Create a new API key for programmatic access"""
     token = credentials.credentials
@@ -138,6 +163,15 @@ def create_api_key(
         user_id,
         key_data.name,
         key_data.expires_at
+    )
+
+    # Audit log: API key created
+    client_ip = get_client_identifier(request) if request else None
+    audit_logger.log_api_key_created(
+        user_id=str(user_id),
+        key_id=str(api_key.id),
+        key_name=api_key.name,
+        source_ip=client_ip
     )
 
     return {
@@ -179,7 +213,8 @@ def list_api_keys(
 def delete_api_key(
     key_id: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ):
     """Delete an API key"""
     token = credentials.credentials
@@ -189,17 +224,33 @@ def delete_api_key(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     from uuid import UUID
+
+    # Get API key details before deletion for audit log
+    from app.models import APIKey
+    api_key = db.query(APIKey).filter(APIKey.id == UUID(key_id)).first()
+
     success = AuthService.delete_api_key(db, UUID(key_id))
 
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
+
+    # Audit log: API key deleted
+    if api_key:
+        client_ip = get_client_identifier(request) if request else None
+        audit_logger.log_api_key_deleted(
+            user_id=str(user_id),
+            key_id=str(api_key.id),
+            key_name=api_key.name,
+            source_ip=client_ip
+        )
 
 
 @router.post("/api-keys/{key_id}/revoke", status_code=204)
 def revoke_api_key(
     key_id: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ):
     """Revoke an API key"""
     token = credentials.credentials
@@ -209,10 +260,25 @@ def revoke_api_key(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     from uuid import UUID
+
+    # Get API key details before revocation for audit log
+    from app.models import APIKey
+    api_key = db.query(APIKey).filter(APIKey.id == UUID(key_id)).first()
+
     success = AuthService.revoke_api_key(db, UUID(key_id))
 
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
+
+    # Audit log: API key revoked
+    if api_key:
+        client_ip = get_client_identifier(request) if request else None
+        audit_logger.log_api_key_revoked(
+            user_id=str(user_id),
+            key_id=str(api_key.id),
+            key_name=api_key.name,
+            source_ip=client_ip
+        )
 
 
 # ============================================================================
