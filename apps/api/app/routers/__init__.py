@@ -5,6 +5,7 @@ from .supplier import router as supplier_router
 from .factory import router as factory_router
 from .cad import router as cad_router
 from .auth import router as auth_router
+from .admin import router as admin_router
 
 __all__ = [
     "hardware_router",
@@ -12,4 +13,5 @@ __all__ = [
     "factory_router",
     "cad_router",
     "auth_router",
+    "admin_router",
 ]
