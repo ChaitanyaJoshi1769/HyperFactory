@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from app.db import Base, get_db
-from app.main import app
+from main import app
 
 
 # Create in-memory SQLite database for testing
@@ -38,7 +38,9 @@ def client(db):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    return TestClient(app)
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="function")

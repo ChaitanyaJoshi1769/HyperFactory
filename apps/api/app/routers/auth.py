@@ -1,7 +1,7 @@
 """Authentication router - login, registration, token management"""
 
 from fastapi import APIRouter, Depends, HTTPException, Header
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -53,7 +53,7 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserRead)
 def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """Get current authenticated user"""
@@ -78,7 +78,7 @@ def get_current_user(
 @router.put("/me", response_model=UserRead)
 def update_current_user(
     update_data: dict,
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """Update current user profile"""
@@ -109,7 +109,7 @@ def update_current_user(
 @router.post("/api-keys", response_model=dict, status_code=201)
 def create_api_key(
     key_data: APIKeyCreate,
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """Create a new API key for programmatic access"""
@@ -142,7 +142,7 @@ def create_api_key(
 
 @router.get("/api-keys")
 def list_api_keys(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """List all API keys for current user"""
@@ -169,7 +169,7 @@ def list_api_keys(
 @router.delete("/api-keys/{key_id}", status_code=204)
 def delete_api_key(
     key_id: str,
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """Delete an API key"""
@@ -189,7 +189,7 @@ def delete_api_key(
 @router.post("/api-keys/{key_id}/revoke", status_code=204)
 def revoke_api_key(
     key_id: str,
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """Revoke an API key"""
@@ -212,7 +212,7 @@ def revoke_api_key(
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     """

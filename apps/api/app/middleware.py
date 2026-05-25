@@ -1,7 +1,7 @@
 """Authentication and authorization middleware"""
 
 from fastapi import Depends, HTTPException, Header, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ security = HTTPBearer()
 # ============================================================================
 
 def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
     """
@@ -122,7 +122,7 @@ def get_current_user_from_api_key(
 
 
 def get_current_user_from_jwt_or_api_key(
-    credentials: Optional[HTTPAuthCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     x_api_key: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ) -> User:
@@ -233,7 +233,7 @@ def require_permission(permission: str):
 # ============================================================================
 
 def get_optional_current_user(
-    credentials: Optional[HTTPAuthCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> Optional[User]:
     """
@@ -262,7 +262,7 @@ def get_optional_current_user(
 # ============================================================================
 
 def get_current_user_id(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> UUID:
     """
     Extract user ID from JWT token without database lookup.
