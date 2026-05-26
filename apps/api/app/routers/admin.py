@@ -358,6 +358,114 @@ def search_users(
     ]
 
 
+# ============================================================================
+# Webhook Administration (Admin Only)
+# ============================================================================
+
+@router.post("/webhooks/process")
+def process_webhooks(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually trigger webhook delivery processing.
+
+    This processes all pending webhook deliveries immediately.
+    Useful for testing and operations.
+    """
+    from app.tasks import WebhookProcessor
+
+    stats = WebhookProcessor.process_pending_deliveries(db)
+
+    return {
+        "message": "Webhook processing completed",
+        "stats": stats
+    }
+
+
+@router.get("/webhooks/stats")
+def get_webhook_stats(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get webhook system statistics.
+
+    Returns counts of webhooks and deliveries by status.
+    """
+    from app.tasks import WebhookProcessor
+
+    stats = WebhookProcessor.get_webhook_stats(db)
+
+    return {
+        "message": "Webhook statistics",
+        "timestamp": datetime.utcnow().isoformat(),
+        **stats
+    }
+
+
+@router.post("/webhooks/cleanup")
+def cleanup_old_deliveries(
+    days_to_keep: int = Query(30, ge=1, le=365, description="Keep deliveries newer than X days"),
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Clean up old webhook deliveries.
+
+    Deletes webhook deliveries older than the specified number of days.
+    Useful for managing database size.
+    """
+    from app.tasks import WebhookProcessor
+
+    stats = WebhookProcessor.cleanup_old_deliveries(db, days_to_keep)
+
+    return {
+        "message": f"Cleaned up webhook deliveries older than {days_to_keep} days",
+        **stats
+    }
+
+
+@router.get("/webhooks/user/{user_id}")
+def get_user_webhooks_admin(
+    user_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all webhooks for a user (admin view).
+
+    Useful for support and debugging.
+    """
+    from app.models.webhook import Webhook
+
+    webhooks = db.query(Webhook).filter(
+        Webhook.user_id == user_id,
+        Webhook.deleted_at.is_(None)
+    ).offset(skip).limit(limit).all()
+
+    return {
+        "user_id": str(user_id),
+        "count": len(webhooks),
+        "webhooks": [
+            {
+                "id": str(w.id),
+                "url": w.url,
+                "status": w.status,
+                "events": w.events,
+                "total_deliveries": w.total_deliveries,
+                "successful_deliveries": w.successful_deliveries,
+                "failed_deliveries": w.failed_deliveries,
+                "created_at": w.created_at.isoformat(),
+                "last_delivery_at": w.last_delivery_at.isoformat() if w.last_delivery_at else None,
+            }
+            for w in webhooks
+        ]
+    }
+
+
 # Import at bottom to avoid circular imports
 from datetime import datetime
 from app.models.user import APIKey
