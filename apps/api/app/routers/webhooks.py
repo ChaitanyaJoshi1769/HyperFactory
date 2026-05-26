@@ -19,12 +19,7 @@ from app.schemas.webhook import (
     WebhookSecret,
 )
 from app.services.webhook_service import WebhookService
-
-# Mock auth - replace with real auth dependency
-def get_current_user_id():
-    """Get current user ID from token"""
-    # This should be replaced with real authentication
-    return "mock-user-id"
+from app.security import get_current_user_id
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
