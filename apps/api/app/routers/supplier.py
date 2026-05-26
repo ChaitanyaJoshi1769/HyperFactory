@@ -16,6 +16,7 @@ from app.schemas.supplier import (
     SupplierQuoteCreate,
     SupplierQuoteRead,
 )
+from app.event_publisher import EventPublisher
 
 router = APIRouter(prefix="/api", tags=["suppliers"])
 
@@ -40,6 +41,16 @@ def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(db_supplier)
+
+    # Publish webhook event
+    EventPublisher.supplier_created(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        supplier_id=str(db_supplier.id),
+        name=db_supplier.name,
+        supplier_type=db_supplier.type or ""
+    )
+
     return db_supplier
 
 
@@ -84,11 +95,24 @@ def update_supplier(
         raise HTTPException(status_code=404, detail="Supplier not found")
 
     update_data = supplier_update.dict(exclude_unset=True)
+    changes = {k: v for k, v in update_data.items()}
+
     for key, value in update_data.items():
         setattr(supplier, key, value)
 
     db.commit()
     db.refresh(supplier)
+
+    # Publish webhook event
+    if changes:
+        EventPublisher.supplier_updated(
+            db=db,
+            user_id="system",  # TODO: Get from auth context
+            supplier_id=str(supplier.id),
+            name=supplier.name,
+            changes=changes
+        )
+
     return supplier
 
 
@@ -99,8 +123,18 @@ def delete_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
 
+    supplier_name = supplier.name
+
     db.delete(supplier)
     db.commit()
+
+    # Publish webhook event
+    EventPublisher.supplier_deleted(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        supplier_id=str(supplier_id),
+        name=supplier_name
+    )
 
 
 # ============================================================================
@@ -171,6 +205,18 @@ def create_quote(quote: SupplierQuoteCreate, db: Session = Depends(get_db)):
     db.add(db_quote)
     db.commit()
     db.refresh(db_quote)
+
+    # Publish webhook event
+    EventPublisher.quote_created(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        quote_id=str(db_quote.id),
+        supplier_id=str(db_quote.supplier_id),
+        part_id=str(db_quote.part_id) if db_quote.part_id else "",
+        unit_price=float(db_quote.unit_price) if db_quote.unit_price else 0.0,
+        lead_time_days=db_quote.lead_time_days or 0
+    )
+
     return db_quote
 
 
@@ -210,5 +256,17 @@ def delete_quote(quote_id: UUID, db: Session = Depends(get_db)):
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
+    supplier_id = quote.supplier_id
+    part_id = quote.part_id
+
     db.delete(quote)
     db.commit()
+
+    # Publish webhook event
+    EventPublisher.quote_deleted(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        quote_id=str(quote_id),
+        supplier_id=str(supplier_id),
+        part_id=str(part_id) if part_id else ""
+    )

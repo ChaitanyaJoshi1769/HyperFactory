@@ -479,3 +479,141 @@ class EventPublisher:
             db, user_id, WebhookEventType.API_KEY_REVOKED.value, event_data,
             f"API key '{key_name}' revoked"
         )
+
+    # =========================================================================
+    # Supplier Events
+    # =========================================================================
+
+    @staticmethod
+    def supplier_created(
+        db: Session,
+        user_id: str,
+        supplier_id: str,
+        name: str,
+        supplier_type: str,
+        **kwargs
+    ):
+        """Publish supplier.created event"""
+        event_data = {
+            "supplier_id": supplier_id,
+            "name": name,
+            "supplier_type": supplier_type,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.SUPPLIER_CREATED.value, event_data,
+            f"Supplier '{name}' created"
+        )
+
+    @staticmethod
+    def supplier_updated(
+        db: Session,
+        user_id: str,
+        supplier_id: str,
+        name: str,
+        changes: dict,
+        **kwargs
+    ):
+        """Publish supplier.updated event"""
+        event_data = {
+            "supplier_id": supplier_id,
+            "name": name,
+            "changes": changes,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.SUPPLIER_UPDATED.value, event_data,
+            f"Supplier '{name}' updated"
+        )
+
+    @staticmethod
+    def supplier_deleted(
+        db: Session,
+        user_id: str,
+        supplier_id: str,
+        name: str,
+        **kwargs
+    ):
+        """Publish supplier.deleted event"""
+        event_data = {
+            "supplier_id": supplier_id,
+            "name": name,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.SUPPLIER_DELETED.value, event_data,
+            f"Supplier '{name}' deleted"
+        )
+
+    # =========================================================================
+    # Supplier Quote Events
+    # =========================================================================
+
+    @staticmethod
+    def quote_created(
+        db: Session,
+        user_id: str,
+        quote_id: str,
+        supplier_id: str,
+        part_id: str,
+        unit_price: float,
+        lead_time_days: int,
+        **kwargs
+    ):
+        """Publish quote.created event"""
+        event_data = {
+            "quote_id": quote_id,
+            "supplier_id": supplier_id,
+            "part_id": part_id,
+            "unit_price": unit_price,
+            "lead_time_days": lead_time_days,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.QUOTE_CREATED.value, event_data,
+            f"Quote {quote_id} created for supplier"
+        )
+
+    @staticmethod
+    def quote_updated(
+        db: Session,
+        user_id: str,
+        quote_id: str,
+        supplier_id: str,
+        part_id: str,
+        changes: dict,
+        **kwargs
+    ):
+        """Publish quote.updated event"""
+        event_data = {
+            "quote_id": quote_id,
+            "supplier_id": supplier_id,
+            "part_id": part_id,
+            "changes": changes,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.QUOTE_UPDATED.value, event_data,
+            f"Quote {quote_id} updated"
+        )
+
+    @staticmethod
+    def quote_deleted(
+        db: Session,
+        user_id: str,
+        quote_id: str,
+        supplier_id: str,
+        part_id: str,
+        **kwargs
+    ):
+        """Publish quote.deleted event"""
+        event_data = {
+            "quote_id": quote_id,
+            "supplier_id": supplier_id,
+            "part_id": part_id,
+            **kwargs
+        }
+        EventPublisher.publish(
+            db, user_id, WebhookEventType.QUOTE_DELETED.value, event_data,
+            f"Quote {quote_id} deleted"
+        )

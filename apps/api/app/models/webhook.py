@@ -35,6 +35,16 @@ class WebhookEventType(str, enum.Enum):
     PART_UPDATED = "part.updated"
     PART_DELETED = "part.deleted"
 
+    # Supplier events
+    SUPPLIER_CREATED = "supplier.created"
+    SUPPLIER_UPDATED = "supplier.updated"
+    SUPPLIER_DELETED = "supplier.deleted"
+
+    # Supplier quote events
+    QUOTE_CREATED = "quote.created"
+    QUOTE_UPDATED = "quote.updated"
+    QUOTE_DELETED = "quote.deleted"
+
     # User/account events
     USER_CREATED = "user.created"
     USER_UPDATED = "user.updated"
