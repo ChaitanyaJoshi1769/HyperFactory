@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 
 # Password hashing
@@ -81,3 +83,37 @@ def verify_token(token: str) -> Optional[str]:
         return None
 
     return sub
+
+
+# ============================================================================
+# Dependency Functions for FastAPI
+# ============================================================================
+
+_security = HTTPBearer()
+
+
+def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(_security)
+) -> str:
+    """Get current user ID from authorization header for use as a FastAPI dependency.
+
+    This function can be used with Depends() in any endpoint to automatically
+    extract and validate the user_id from the JWT token in the authorization header.
+
+    Args:
+        credentials: HTTPBearer credentials from authorization header
+
+    Returns:
+        User ID string
+
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    user_id = verify_token(credentials.credentials)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return user_id

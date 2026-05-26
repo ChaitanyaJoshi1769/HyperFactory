@@ -15,6 +15,7 @@ from app.schemas.cad import (
     CADAnalysisUpdate,
 )
 from app.event_publisher import EventPublisher
+from app.security import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["cad"])
 
@@ -89,7 +90,11 @@ def delete_cad_model(model_id: UUID, db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/cad-analyses", response_model=CADAnalysisRead, status_code=201)
-def create_cad_analysis(analysis: CADAnalysisCreate, db: Session = Depends(get_db)):
+def create_cad_analysis(
+    analysis: CADAnalysisCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a new CAD analysis"""
     # Verify CAD model exists if provided
     if analysis.cad_model_id:
@@ -105,7 +110,7 @@ def create_cad_analysis(analysis: CADAnalysisCreate, db: Session = Depends(get_d
     # Publish webhook event
     EventPublisher.cad_analysis_completed(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         analysis_id=str(db_analysis.id),
         part_id=str(db_analysis.hardware_part_id) if db_analysis.hardware_part_id else "",
         dfm_score=db_analysis.manufacturability_score or 0,
@@ -203,7 +208,8 @@ def get_model_analysis(model_id: UUID, db: Session = Depends(get_db)):
 def analyze_cad_model(
     model_id: UUID,
     analysis_type: str = Query("standard", min_length=1),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Create analysis for a CAD model"""
     model = db.query(CADModel).filter(CADModel.id == model_id).first()
@@ -231,7 +237,7 @@ def analyze_cad_model(
     # Publish webhook event
     EventPublisher.cad_analysis_completed(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         analysis_id=str(db_analysis.id),
         part_id=str(db_analysis.hardware_part_id) if db_analysis.hardware_part_id else "",
         dfm_score=db_analysis.manufacturability_score or 0,

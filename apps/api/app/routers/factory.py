@@ -19,6 +19,7 @@ from app.schemas.factory import (
     ProductionJobUpdate,
 )
 from app.event_publisher import EventPublisher
+from app.security import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["factory"])
 
@@ -28,7 +29,11 @@ router = APIRouter(prefix="/api", tags=["factory"])
 # ============================================================================
 
 @router.post("/factories", response_model=FactoryConfigRead, status_code=201)
-def create_factory(factory: FactoryConfigCreate, db: Session = Depends(get_db)):
+def create_factory(
+    factory: FactoryConfigCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a new factory"""
     db_factory = FactoryConfig(**factory.dict())
     db.add(db_factory)
@@ -36,10 +41,9 @@ def create_factory(factory: FactoryConfigCreate, db: Session = Depends(get_db)):
     db.refresh(db_factory)
 
     # Publish webhook event
-    # TODO: Get actual user_id from auth context
     EventPublisher.factory_created(
         db=db,
-        user_id="system",  # In production, use actual user from auth
+        user_id=user_id,
         factory_id=str(db_factory.id),
         name=db_factory.name,
         location=db_factory.location or "",
@@ -82,7 +86,8 @@ def get_factory(factory_id: UUID, db: Session = Depends(get_db)):
 def update_factory(
     factory_id: UUID,
     factory_update: FactoryConfigUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Update a factory"""
     factory = db.query(FactoryConfig).filter(FactoryConfig.id == factory_id).first()
@@ -102,7 +107,7 @@ def update_factory(
     if changes:
         EventPublisher.factory_updated(
             db=db,
-            user_id="system",  # TODO: Get from auth context
+            user_id=user_id,
             factory_id=str(factory.id),
             name=factory.name,
             changes=changes
@@ -112,7 +117,11 @@ def update_factory(
 
 
 @router.delete("/factories/{factory_id}", status_code=204)
-def delete_factory(factory_id: UUID, db: Session = Depends(get_db)):
+def delete_factory(
+    factory_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Delete a factory"""
     factory = db.query(FactoryConfig).filter(FactoryConfig.id == factory_id).first()
     if not factory:
@@ -126,7 +135,7 @@ def delete_factory(factory_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.factory_deleted(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         factory_id=str(factory_id),
         name=factory_name
     )
@@ -140,7 +149,8 @@ def delete_factory(factory_id: UUID, db: Session = Depends(get_db)):
 def add_machine(
     factory_id: UUID,
     machine: MachineCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Add a machine to a factory"""
     factory = db.query(FactoryConfig).filter(FactoryConfig.id == factory_id).first()
@@ -157,7 +167,7 @@ def add_machine(
     # Publish webhook event
     EventPublisher.machine_created(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         machine_id=str(db_machine.id),
         name=db_machine.name,
         factory_id=str(factory_id)
@@ -234,7 +244,11 @@ def delete_machine(machine_id: UUID, db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/production-jobs", response_model=ProductionJobRead, status_code=201)
-def create_job(job: ProductionJobCreate, db: Session = Depends(get_db)):
+def create_job(
+    job: ProductionJobCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a new production job"""
     db_job = ProductionJob(**job.dict())
     db.add(db_job)
@@ -244,7 +258,7 @@ def create_job(job: ProductionJobCreate, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.job_created(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         job_id=str(db_job.id),
         part_id=str(db_job.part_id) if db_job.part_id else "",
         machine_id=str(db_job.machine_id) if db_job.machine_id else "",
@@ -338,7 +352,11 @@ def queue_job(job_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.post("/production-jobs/{job_id}/start", response_model=ProductionJobRead)
-def start_job(job_id: UUID, db: Session = Depends(get_db)):
+def start_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Start a production job"""
     job = db.query(ProductionJob).filter(ProductionJob.id == job_id).first()
     if not job:
@@ -352,7 +370,7 @@ def start_job(job_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.job_started(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         job_id=str(job.id),
         part_id=str(job.part_id) if job.part_id else "",
         machine_id=str(job.machine_id) if job.machine_id else "",
@@ -363,7 +381,11 @@ def start_job(job_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.post("/production-jobs/{job_id}/complete", response_model=ProductionJobRead)
-def complete_job(job_id: UUID, db: Session = Depends(get_db)):
+def complete_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Complete a production job"""
     job = db.query(ProductionJob).filter(ProductionJob.id == job_id).first()
     if not job:
@@ -377,7 +399,7 @@ def complete_job(job_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.job_completed(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         job_id=str(job.id),
         part_id=str(job.part_id) if job.part_id else "",
         quantity=job.quantity or 1,

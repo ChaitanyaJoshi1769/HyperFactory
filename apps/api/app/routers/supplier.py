@@ -17,6 +17,7 @@ from app.schemas.supplier import (
     SupplierQuoteRead,
 )
 from app.event_publisher import EventPublisher
+from app.security import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["suppliers"])
 
@@ -26,7 +27,11 @@ router = APIRouter(prefix="/api", tags=["suppliers"])
 # ============================================================================
 
 @router.post("/suppliers", response_model=SupplierRead, status_code=201)
-def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
+def create_supplier(
+    supplier: SupplierCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a new supplier"""
     supplier_data = supplier.dict(exclude={'capabilities'})
     db_supplier = Supplier(**supplier_data)
@@ -45,7 +50,7 @@ def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.supplier_created(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         supplier_id=str(db_supplier.id),
         name=db_supplier.name,
         supplier_type=db_supplier.type or ""
@@ -87,7 +92,8 @@ def get_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
 def update_supplier(
     supplier_id: UUID,
     supplier_update: SupplierUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Update a supplier"""
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -107,7 +113,7 @@ def update_supplier(
     if changes:
         EventPublisher.supplier_updated(
             db=db,
-            user_id="system",  # TODO: Get from auth context
+            user_id=user_id,
             supplier_id=str(supplier.id),
             name=supplier.name,
             changes=changes
@@ -117,7 +123,11 @@ def update_supplier(
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
+def delete_supplier(
+    supplier_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Delete a supplier"""
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
@@ -131,7 +141,7 @@ def delete_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.supplier_deleted(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         supplier_id=str(supplier_id),
         name=supplier_name
     )
@@ -194,7 +204,11 @@ def delete_capability(capability_id: UUID, db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/quotes", response_model=SupplierQuoteRead, status_code=201)
-def create_quote(quote: SupplierQuoteCreate, db: Session = Depends(get_db)):
+def create_quote(
+    quote: SupplierQuoteCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a supplier quote"""
     # Verify supplier exists
     supplier = db.query(Supplier).filter(Supplier.id == quote.supplier_id).first()
@@ -209,7 +223,7 @@ def create_quote(quote: SupplierQuoteCreate, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.quote_created(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         quote_id=str(db_quote.id),
         supplier_id=str(db_quote.supplier_id),
         part_id=str(db_quote.part_id) if db_quote.part_id else "",
@@ -250,7 +264,11 @@ def get_quote(quote_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.delete("/quotes/{quote_id}", status_code=204)
-def delete_quote(quote_id: UUID, db: Session = Depends(get_db)):
+def delete_quote(
+    quote_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Delete a quote"""
     quote = db.query(SupplierQuote).filter(SupplierQuote.id == quote_id).first()
     if not quote:
@@ -265,7 +283,7 @@ def delete_quote(quote_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.quote_deleted(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         quote_id=str(quote_id),
         supplier_id=str(supplier_id),
         part_id=str(part_id) if part_id else ""

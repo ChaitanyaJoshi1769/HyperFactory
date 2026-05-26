@@ -19,6 +19,7 @@ from app.schemas.hardware import (
     SurfaceFinishRead,
 )
 from app.event_publisher import EventPublisher
+from app.security import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["hardware"])
 
@@ -93,7 +94,11 @@ def delete_material(material_id: UUID, db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/hardware-parts", response_model=HardwarePartRead, status_code=201)
-def create_hardware_part(part: HardwarePartCreate, db: Session = Depends(get_db)):
+def create_hardware_part(
+    part: HardwarePartCreate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Create a new hardware part"""
     # Create the part
     part_data = part.dict(exclude={'tolerances', 'surface_finishes'})
@@ -119,7 +124,7 @@ def create_hardware_part(part: HardwarePartCreate, db: Session = Depends(get_db)
     # Publish webhook event
     EventPublisher.part_created(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         part_id=str(db_part.id),
         name=db_part.name,
         part_type=db_part.type or ""
@@ -158,7 +163,8 @@ def get_hardware_part(part_id: UUID, db: Session = Depends(get_db)):
 def update_hardware_part(
     part_id: UUID,
     part_update: HardwarePartUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Update a hardware part"""
     part = db.query(HardwarePart).filter(HardwarePart.id == part_id).first()
@@ -178,7 +184,7 @@ def update_hardware_part(
     if changes:
         EventPublisher.part_updated(
             db=db,
-            user_id="system",  # TODO: Get from auth context
+            user_id=user_id,
             part_id=str(part.id),
             name=part.name,
             changes=changes
@@ -188,7 +194,11 @@ def update_hardware_part(
 
 
 @router.delete("/hardware-parts/{part_id}", status_code=204)
-def delete_hardware_part(part_id: UUID, db: Session = Depends(get_db)):
+def delete_hardware_part(
+    part_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
     """Delete a hardware part"""
     part = db.query(HardwarePart).filter(HardwarePart.id == part_id).first()
     if not part:
@@ -202,7 +212,7 @@ def delete_hardware_part(part_id: UUID, db: Session = Depends(get_db)):
     # Publish webhook event
     EventPublisher.part_deleted(
         db=db,
-        user_id="system",  # TODO: Get from auth context
+        user_id=user_id,
         part_id=str(part_id),
         name=part_name
     )
