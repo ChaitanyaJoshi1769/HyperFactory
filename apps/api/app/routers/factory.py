@@ -18,6 +18,7 @@ from app.schemas.factory import (
     ProductionJobRead,
     ProductionJobUpdate,
 )
+from app.event_publisher import EventPublisher
 
 router = APIRouter(prefix="/api", tags=["factory"])
 
@@ -33,6 +34,18 @@ def create_factory(factory: FactoryConfigCreate, db: Session = Depends(get_db)):
     db.add(db_factory)
     db.commit()
     db.refresh(db_factory)
+
+    # Publish webhook event
+    # TODO: Get actual user_id from auth context
+    EventPublisher.factory_created(
+        db=db,
+        user_id="system",  # In production, use actual user from auth
+        factory_id=str(db_factory.id),
+        name=db_factory.name,
+        location=db_factory.location or "",
+        status=db_factory.status or "operational"
+    )
+
     return db_factory
 
 
@@ -77,11 +90,24 @@ def update_factory(
         raise HTTPException(status_code=404, detail="Factory not found")
 
     update_data = factory_update.dict(exclude_unset=True)
+    changes = {k: v for k, v in update_data.items()}
+
     for key, value in update_data.items():
         setattr(factory, key, value)
 
     db.commit()
     db.refresh(factory)
+
+    # Publish webhook event
+    if changes:
+        EventPublisher.factory_updated(
+            db=db,
+            user_id="system",  # TODO: Get from auth context
+            factory_id=str(factory.id),
+            name=factory.name,
+            changes=changes
+        )
+
     return factory
 
 
@@ -92,8 +118,18 @@ def delete_factory(factory_id: UUID, db: Session = Depends(get_db)):
     if not factory:
         raise HTTPException(status_code=404, detail="Factory not found")
 
+    factory_name = factory.name
+
     db.delete(factory)
     db.commit()
+
+    # Publish webhook event
+    EventPublisher.factory_deleted(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        factory_id=str(factory_id),
+        name=factory_name
+    )
 
 
 # ============================================================================
@@ -117,6 +153,16 @@ def add_machine(
     db.add(db_machine)
     db.commit()
     db.refresh(db_machine)
+
+    # Publish webhook event
+    EventPublisher.machine_created(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        machine_id=str(db_machine.id),
+        name=db_machine.name,
+        factory_id=str(factory_id)
+    )
+
     return db_machine
 
 
@@ -194,6 +240,17 @@ def create_job(job: ProductionJobCreate, db: Session = Depends(get_db)):
     db.add(db_job)
     db.commit()
     db.refresh(db_job)
+
+    # Publish webhook event
+    EventPublisher.job_created(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        job_id=str(db_job.id),
+        part_id=str(db_job.part_id) if db_job.part_id else "",
+        machine_id=str(db_job.machine_id) if db_job.machine_id else "",
+        quantity=db_job.quantity or 1
+    )
+
     return db_job
 
 
@@ -288,8 +345,20 @@ def start_job(job_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Production job not found")
 
     job.status = "in_progress"
+    job.start_time = __import__('datetime').datetime.utcnow()
     db.commit()
     db.refresh(job)
+
+    # Publish webhook event
+    EventPublisher.job_started(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        job_id=str(job.id),
+        part_id=str(job.part_id) if job.part_id else "",
+        machine_id=str(job.machine_id) if job.machine_id else "",
+        estimated_duration_minutes=job.estimated_duration_minutes or 0
+    )
+
     return job
 
 
@@ -301,8 +370,23 @@ def complete_job(job_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Production job not found")
 
     job.status = "completed"
+    job.completion_time = __import__('datetime').datetime.utcnow()
     db.commit()
     db.refresh(job)
+
+    # Publish webhook event
+    EventPublisher.job_completed(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        job_id=str(job.id),
+        part_id=str(job.part_id) if job.part_id else "",
+        quantity=job.quantity or 1,
+        actual_duration_minutes=job.actual_duration_minutes or 0,
+        actual_cost=float(job.actual_cost) if job.actual_cost else 0.0,
+        quality_passed=job.quality_checks_passed or 0,
+        quality_failed=job.quality_checks_failed or 0
+    )
+
     return job
 
 
