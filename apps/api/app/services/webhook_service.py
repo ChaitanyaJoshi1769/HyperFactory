@@ -30,6 +30,10 @@ class WebhookService:
         """Create a new webhook and return the secret"""
         secret = secrets.token_urlsafe(32)
 
+        # Convert user_id to UUID if it's a string
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
         db_webhook = Webhook(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -159,12 +163,24 @@ class WebhookService:
         payload: dict
     ) -> Optional[WebhookDelivery]:
         """Queue a webhook delivery"""
+        # Convert webhook_id to UUID if it's a string
+        if isinstance(webhook_id, str):
+            webhook_id = uuid.UUID(webhook_id)
+
         webhook = db.query(Webhook).filter(Webhook.id == webhook_id).first()
         if not webhook or webhook.status != WebhookStatus.ACTIVE.value:
             return None
 
         # Check if webhook subscribes to this event
-        if event_type not in webhook.events and "*" not in webhook.events:
+        event_matches = (
+            event_type in webhook.events or
+            "*" in webhook.events or
+            any(
+                pattern.endswith("*") and event_type.startswith(pattern[:-1])
+                for pattern in webhook.events
+            )
+        )
+        if not event_matches:
             return None
 
         delivery_id = secrets.token_hex(32)
@@ -365,6 +381,10 @@ class WebhookService:
         event_data: dict
     ) -> List[WebhookDelivery]:
         """Publish an event to all subscribed webhooks"""
+        # Convert user_id to UUID if it's a string
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
         webhooks = db.query(Webhook).filter(
             and_(
                 Webhook.user_id == user_id,

@@ -1,8 +1,7 @@
 """Webhook and event management models"""
 
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON, Integer, Enum
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON, Integer, Enum, Uuid
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import enum
 from datetime import datetime
@@ -53,8 +52,8 @@ class WebhookStatus(str, enum.Enum):
 class Webhook(Base):
     __tablename__ = "webhooks"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.id"), nullable=False, index=True)
     url = Column(String(2000), nullable=False)
     secret = Column(String(255), nullable=False)  # For HMAC signature
     status = Column(String(50), default="active", index=True)
@@ -89,8 +88,8 @@ class Webhook(Base):
 class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    webhook_id = Column(UUID(as_uuid=True), ForeignKey("webhooks.id"), nullable=False, index=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    webhook_id = Column(Uuid, ForeignKey("webhooks.id"), nullable=False, index=True)
     event_type = Column(String(100), nullable=False, index=True)
     delivery_id = Column(String(64), unique=True, index=True)  # Unique delivery ID for idempotency
 
@@ -119,8 +118,8 @@ class WebhookDelivery(Base):
 class WebhookLog(Base):
     __tablename__ = "webhook_logs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    webhook_id = Column(UUID(as_uuid=True), ForeignKey("webhooks.id"), nullable=False, index=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    webhook_id = Column(Uuid, ForeignKey("webhooks.id"), nullable=False, index=True)
     delivery_id = Column(String(64), ForeignKey("webhook_deliveries.delivery_id"))
 
     # Log details
