@@ -14,6 +14,7 @@ from app.schemas.cad import (
     CADAnalysisRead,
     CADAnalysisUpdate,
 )
+from app.event_publisher import EventPublisher
 
 router = APIRouter(prefix="/api", tags=["cad"])
 
@@ -100,6 +101,18 @@ def create_cad_analysis(analysis: CADAnalysisCreate, db: Session = Depends(get_d
     db.add(db_analysis)
     db.commit()
     db.refresh(db_analysis)
+
+    # Publish webhook event
+    EventPublisher.cad_analysis_completed(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        analysis_id=str(db_analysis.id),
+        part_id=str(db_analysis.hardware_part_id) if db_analysis.hardware_part_id else "",
+        dfm_score=db_analysis.manufacturability_score or 0,
+        manufacturability_issues=db_analysis.identified_issues or [],
+        optimization_recommendations=db_analysis.recommended_optimizations or []
+    )
+
     return db_analysis
 
 
@@ -214,4 +227,16 @@ def analyze_cad_model(
     db.add(db_analysis)
     db.commit()
     db.refresh(db_analysis)
+
+    # Publish webhook event
+    EventPublisher.cad_analysis_completed(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        analysis_id=str(db_analysis.id),
+        part_id=str(db_analysis.hardware_part_id) if db_analysis.hardware_part_id else "",
+        dfm_score=db_analysis.manufacturability_score or 0,
+        manufacturability_issues=db_analysis.identified_issues or [],
+        optimization_recommendations=db_analysis.recommended_optimizations or []
+    )
+
     return db_analysis
