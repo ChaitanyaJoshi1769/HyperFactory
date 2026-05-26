@@ -18,6 +18,7 @@ from app.schemas.hardware import (
     SurfaceFinishCreate,
     SurfaceFinishRead,
 )
+from app.event_publisher import EventPublisher
 
 router = APIRouter(prefix="/api", tags=["hardware"])
 
@@ -114,6 +115,16 @@ def create_hardware_part(part: HardwarePartCreate, db: Session = Depends(get_db)
 
     db.commit()
     db.refresh(db_part)
+
+    # Publish webhook event
+    EventPublisher.part_created(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        part_id=str(db_part.id),
+        name=db_part.name,
+        part_type=db_part.type or ""
+    )
+
     return db_part
 
 
@@ -155,11 +166,24 @@ def update_hardware_part(
         raise HTTPException(status_code=404, detail="Hardware part not found")
 
     update_data = part_update.dict(exclude_unset=True)
+    changes = {k: v for k, v in update_data.items()}
+
     for key, value in update_data.items():
         setattr(part, key, value)
 
     db.commit()
     db.refresh(part)
+
+    # Publish webhook event
+    if changes:
+        EventPublisher.part_updated(
+            db=db,
+            user_id="system",  # TODO: Get from auth context
+            part_id=str(part.id),
+            name=part.name,
+            changes=changes
+        )
+
     return part
 
 
@@ -170,8 +194,18 @@ def delete_hardware_part(part_id: UUID, db: Session = Depends(get_db)):
     if not part:
         raise HTTPException(status_code=404, detail="Hardware part not found")
 
+    part_name = part.name
+
     db.delete(part)
     db.commit()
+
+    # Publish webhook event
+    EventPublisher.part_deleted(
+        db=db,
+        user_id="system",  # TODO: Get from auth context
+        part_id=str(part_id),
+        name=part_name
+    )
 
 
 # ============================================================================
