@@ -7,22 +7,58 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+import logging
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 load_dotenv()
 
 # Import routers
 from app.routers import hardware_router, supplier_router, factory_router, cad_router, auth_router, admin_router, websocket_router, files_router, search_router, webhooks_router
 from app.exceptions import register_exception_handlers
+from app.tasks.webhook_processor import WebhookProcessor
+
+logger = logging.getLogger(__name__)
+
+# Global scheduler instance
+scheduler = BackgroundScheduler()
+
+def process_webhook_deliveries():
+    """Background task to process pending webhook deliveries"""
+    try:
+        WebhookProcessor.process_pending_deliveries()
+    except Exception as e:
+        logger.error(f"Error processing webhook deliveries: {e}")
 
 # Lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 HyperFactory API starting up...")
+
+    # Start webhook scheduler
+    try:
+        scheduler.add_job(
+            process_webhook_deliveries,
+            IntervalTrigger(seconds=60),
+            id='webhook_processor',
+            name='Process pending webhook deliveries',
+            replace_existing=True,
+            max_instances=1
+        )
+        scheduler.start()
+        logger.info("✅ Webhook delivery processor scheduled (every 60 seconds)")
+    except Exception as e:
+        logger.error(f"Failed to start webhook scheduler: {e}")
+
     yield
+
     # Shutdown
     print("🛑 HyperFactory API shutting down...")
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("✅ Webhook scheduler shut down")
 
 # Initialize FastAPI app
 app = FastAPI(
