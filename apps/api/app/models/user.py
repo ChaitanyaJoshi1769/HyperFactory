@@ -30,6 +30,9 @@ class User(Base):
     email_verified = Column(Boolean, default=False, index=True)
     email_verified_at = Column(DateTime)
 
+    # Relationships
+    webhooks = relationship("Webhook", back_populates="user", cascade="all, delete-orphan")
+
 
 class APIKey(Base):
     """API Key model for programmatic access"""

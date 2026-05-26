@@ -6,6 +6,7 @@ from .factory import Machine, ProductionJob, FactoryConfig
 from .cad import CADModel, CADAnalysis
 from .user import User, APIKey
 from .session import Session
+from .webhook import Webhook, WebhookDelivery, WebhookLog, WebhookEventType, WebhookStatus
 
 __all__ = [
     "HardwarePart",
@@ -23,4 +24,9 @@ __all__ = [
     "User",
     "APIKey",
     "Session",
+    "Webhook",
+    "WebhookDelivery",
+    "WebhookLog",
+    "WebhookEventType",
+    "WebhookStatus",
 ]

@@ -9,6 +9,7 @@ from .admin import router as admin_router
 from .websocket import router as websocket_router
 from .files import router as files_router
 from .search import router as search_router
+from .webhooks import router as webhooks_router
 
 __all__ = [
     "hardware_router",
@@ -20,4 +21,5 @@ __all__ = [
     "websocket_router",
     "files_router",
     "search_router",
+    "webhooks_router",
 ]
